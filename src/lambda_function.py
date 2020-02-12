@@ -47,12 +47,10 @@ REDSHIFT_QUERY3 = """
   IGNOREHEADER 1
   DATEFORMAT 'YYYYMMDD';
 """
-
-def lambda_handler(event, context):
-  # TODO implement
+def getParseS3Message(message):
   #s3Event = json.loads(event)
 
-  s3 = event["Records"][0]["s3"]
+  s3 = message["Records"][0]["s3"]
 
   #print(s3)
 
@@ -61,6 +59,9 @@ def lambda_handler(event, context):
 
   print(f'The Lambda has been triggered by the bucket {bucket}.\nA file {key} is going to be ingested')
 
+  return (bucket, key)
+
+def getRedshiftConnection():
   try:
     conn = psycopg2.connect(
       dbname=REDSHIFT_DATABASE,
@@ -75,20 +76,22 @@ def lambda_handler(event, context):
     print(ERROR)
     sys.exit(1)
 
-  copy_query = REDSHIFT_QUERY3\
+  return conn
+
+def getS3CopyQuery(bucket, key):
+  return REDSHIFT_QUERY3\
     .replace('{{TABLE_NAME}}', TABLE_NAME)\
     .replace('{{BUCKET}}', bucket)\
     .replace('{{KEY}}', key)\
     .replace('{{IAM_ROLE}}', IAM_ROLE)\
-  
-  #print(copy_query)
 
+def runCopyQuery(conn, copyQuery):
   try:
     cursor = conn.cursor()
     #print("Cursor: ")
     cursor.execute(REDSHIFT_QUERY1.replace('{{TABLE_NAME}}', TABLE_NAME))
     cursor.execute(REDSHIFT_QUERY2.replace('{{TABLE_NAME}}', TABLE_NAME))
-    cursor.execute(copy_query)
+    cursor.execute(copyQuery)
     cursor.close()
     conn.commit()
     conn.close()
@@ -97,6 +100,19 @@ def lambda_handler(event, context):
     print("Execution Issue: ")
     print(ERROR)
     sys.exit(1)
+
+def lambda_handler(event, context):
+  # TODO implement
+
+  (bucket, key) = getParseS3Message(event)
+
+  conn = getRedshiftConnection()
+
+  copyQuery = getS3CopyQuery(bucket, key)
+
+  runCopyQuery(conn, copyQuery)
+
+  #print(copy_query)
 
   print(f'the bucket name is: {bucket}/{key} has been loaded into {TABLE_NAME}')
 
